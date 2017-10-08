@@ -17,12 +17,16 @@ type
     btnStart: TButton;
     btnClear: TButton;
     cbHex: TCheckBox;
+    cbSave: TCheckBox;
+    cbUdp: TCheckBox;
     cmbTemplate: TComboBox;
     cbLogLevel: TComboBox;
     edtPort: TEdit;
     Label1: TLabel;
     Label2: TLabel;
+    Label3: TLabel;
     LTCP1: TLTCPComponent;
+    LUDP1: TLUDPComponent;
     MemoLog: TMemo;
     MemoSend: TMemo;
     Panel1: TPanel;
@@ -35,6 +39,7 @@ type
     ToolButton2: TToolButton;
     procedure btnClearClick(Sender: TObject);
     procedure btnStartClick(Sender: TObject);
+    procedure cbSaveChange(Sender: TObject);
     procedure cmbTemplateCloseUp(Sender: TObject);
     procedure edtPortKeyDown(Sender: TObject; var Key: word; Shift: TShiftState);
     procedure FormCloseQuery(Sender: TObject; var CanClose: boolean);
@@ -43,6 +48,7 @@ type
     procedure LTCP1Accept(aSocket: TLSocket);
     procedure LTCP1Disconnect(aSocket: TLSocket);
     procedure LTCP1Receive(aSocket: TLSocket);
+    procedure LUDP1Receive(aSocket: TLSocket);
     procedure sbSaveTemplateClick(Sender: TObject);
     procedure sbDeleteTemplateClick(Sender: TObject);
   private
@@ -52,11 +58,13 @@ type
     procedure saveXmlConfig();
     procedure printLog(strLog: string);
     function text2HexCode(str: string): string;
+    procedure processLog(msg:String; cnt:Integer; mode:String; hex:Boolean; ts: TTimeStamp; aSocket: TLSocket);
   end;
 
 var
   MainForm: TMainForm;
   xmlDoc: TXMLDocument;
+  logFileHandle: THandle;
 
 implementation
 
@@ -80,16 +88,28 @@ begin
       ShowMessage('[ERROR]: The port is invalid, choose 1-65535.');
       exit;
     end;
+
+    // start the server
     if btnStart.Tag = 0 then
     begin
-      LTCP1.Listen(port);
+      if cbUdp.Checked then
+        LUDP1.Listen(port)
+      else
+        LTCP1.Listen(port);
+      cbUdp.Enabled:=false;
       btnStart.Tag := 1;
     end
     else
     begin
-      LTCP1.Disconnect(True);
+      if cbUdp.Checked then
+        LUDP1.Disconnect(True)
+      else
+        LTCP1.Disconnect(True);
+      cbUdp.Enabled:=true;
       btnStart.Tag := 0;
     end;
+
+    // change the display on the button.
     if btnStart.Tag = 0 then
     begin
       btnStart.Caption := '&Listen';
@@ -104,6 +124,12 @@ begin
       printLog('[ERROR]: ' + e.Message);
   end;
 
+end;
+
+procedure TMainForm.cbSaveChange(Sender: TObject);
+begin
+  if cbSave.Checked then
+     printLog('Log will save to file...');
 end;
 
 procedure TMainForm.cmbTemplateCloseUp(Sender: TObject);
@@ -140,53 +166,87 @@ begin
 end;
 
 procedure TMainForm.FormCreate(Sender: TObject);
+var
+  strTS: String;
 begin
+  try
   //init the xmlDoc
   xmlDoc := TXMLDocument.Create;
+  strTS := DateTimeToStr(Now);
+  strTS := strTS.Replace('/', '');
+  strTS := strTS.Replace(':', '');
+  strTS := strTS.Replace(' ', '');
+  If Not DirectoryExists('log') then
+    If Not CreateDir ('log') Then
+      printLog('[ERROR]: Create dir log failed.');
+
+  logFileHandle := FileCreate('.\log\mocalog_' + strTS + '.txt', fmOpenWrite);
 
   loadXmlConfig();
+  except on e:Exception do
+    printLog('[ERROR]:' + e.Message);
+  end;
+
 end;
 
 procedure TMainForm.FormDestroy(Sender: TObject);
 begin
   // destory the xml
   xmlDoc.Free;
+  FileClose(logFileHandle);
 end;
 
 procedure TMainForm.LTCP1Accept(aSocket: TLSocket);
 begin
-  MemoLog.Append('[CLIENT]:' + aSocket.PeerAddress + ':' + IntToStr(aSocket.PeerPort) + ' Connected.');
+  processLog('Connected.', 0, 'CLIENT', false, DateTimetoTimeStamp(Now), aSocket);
+  //printLog('[CLIENT]:' + aSocket.PeerAddress + ':' + IntToStr(aSocket.PeerPort) + ' Connected.');
 end;
 
 procedure TMainForm.LTCP1Disconnect(aSocket: TLSocket);
 begin
-  MemoLog.Append('[CLIENT]:' + aSocket.PeerAddress + ':' + IntToStr(aSocket.PeerPort) + ' Disconnected.');
+  processLog('Disconnected.', 0, 'CLIENT', false, DateTimetoTimeStamp(Now), aSocket);
+  //printLog('[CLIENT]:' + aSocket.PeerAddress + ':' + IntToStr(aSocket.PeerPort) + ' Disconnected.');
 end;
 
 procedure TMainForm.LTCP1Receive(aSocket: TLSocket);
 var
   recvMsg: string;
   recvCnt, sndCnt: integer;
+  tsRecv, tsSend: TTimeStamp;
 begin
   recvCnt := aSocket.GetMessage(recvMsg);
+  tsRecv := DateTimeToTimeStamp (Now);  // Get the time of receive message
   sndCnt := aSocket.SendMessage(memoSend.Text);
+  tsSend := DateTimeToTimeStamp (Now);  // Get the time of send message.
 
   if recvCnt > 0 then
   begin
     if cbLogLevel.Text = 'All' then
     begin
-      if cbHex.Checked then
-      begin
-        MemoLog.Append('[RECV]:<' + aSocket.PeerAddress + ':' + IntToStr(aSocket.PeerPort) + '> <' + IntToStr(recvCnt) +
-          ' Bytes>' + chr(13) + chr(10) + text2HexCode(recvmsg));
-        MemoLog.Append('[SEND]:<' + IntToStr(sndCnt) + ' Bytes>' + chr(13) + chr(10) + text2HexCode(MemoSend.Text));
-      end
-      else
-      begin
-        MemoLog.Append('[RECV]:<' + aSocket.PeerAddress + ':' + IntToStr(aSocket.PeerPort) + '> <' + IntToStr(recvCnt) +
-          ' Bytes>' + chr(13) + chr(10) + recvmsg);
-        MemoLog.Append('[SEND]:<' + IntToStr(sndCnt) + ' Bytes>' + chr(13) + chr(10) + MemoSend.Text);
-      end;
+      processLog(recvMsg, recvCnt, 'RECV', cbHex.Checked, tsRecv, aSocket);
+      processLog(memoSend.Text, sndCnt, 'SEND', cbHex.Checked, tsSend, aSocket);
+    end;
+  end;
+end;
+
+procedure TMainForm.LUDP1Receive(aSocket: TLSocket);
+var
+  recvMsg: string;
+  recvCnt, sndCnt: integer;
+  tsRecv, tsSend: TTimeStamp;
+begin
+  // tackle message.
+  recvCnt := aSocket.GetMessage(recvMsg);
+  tsRecv := DateTimeToTimeStamp (Now);  // Get the time of receive message
+  sndCnt := aSocket.SendMessage(memoSend.Text);
+  tsSend := DateTimeToTimeStamp (Now);  // Get the time of send message.
+
+  if recvCnt > 0 then
+  begin
+    if cbLogLevel.Text = 'All' then
+    begin
+      processLog(recvMsg, recvCnt, 'RECV', cbHex.Checked, tsRecv, aSocket);
+      processLog(memoSend.Text, sndCnt, 'SEND', cbHex.Checked, tsSend, aSocket);
     end;
   end;
 end;
@@ -212,6 +272,18 @@ begin
     end
     else
     begin
+      // to avoid the duplicate item.
+      tNode := pNode.FirstChild;
+      while Assigned(tNode) do
+      begin
+        if tNode.Attributes.GetNamedItem('name').NodeValue = cmbTemplate.Text then
+        begin
+          tNode.TextContent := MemoSend.Text;
+          exit; // find the same item, then finish the save process.
+        end;
+        tNode := tNode.NextSibling;
+      end;
+      // create new item below.
       tNode := xmlDoc.CreateElement('Item');
       tNode.TextContent := MemoSend.Text;
       TDomElement(tNode).SetAttribute('name', cmbTemplate.Text);
@@ -392,8 +464,13 @@ begin
 end;
 
 procedure TMainForm.printLog(strLog: string);
+var
+  strTS: String;
+  DT:TDateTime;
 begin
-  MemoLog.Append(strLog);
+  DT := Now;
+  strTS := DateTimetoStr(DT) + Format('.%.3d', [DateTimeToTimeStamp(DT).Time mod 1000]);
+  MemoLog.Append(strTS + ' ' + strLog);
 end;
 
 function TMainForm.text2HexCode(str: string): string;
@@ -410,6 +487,34 @@ begin
       ret := ret + chr(13) + chr(10);
   end;
   Result := ret;
+end;
+
+procedure TMainForm.processLog(msg: String; cnt: Integer; mode: String;
+  hex: Boolean; ts: TTimeStamp; aSocket: TLSocket);
+var
+  str: String;
+  strMsgLenIndicator: String;
+  strSocketInfo: String;
+begin
+  // this procedure is used to show the log or save the log.
+  if hex then
+     msg := text2HexCode(msg);
+  if (mode = 'SEND') or (mode = 'RECV') then
+    strMsgLenIndicator := ' <' + IntToStr(cnt) + ' Bytes>' + chr(13) + chr(10) ;
+  if Assigned(aSocket) then
+    strSocketInfo :=aSocket.PeerAddress + ':' + IntToStr(aSocket.PeerPort) + '>';
+
+  str := '[' + mode + ' ' + DateTimeToStr(TimeStampToDateTime(ts)) + '.' + Format('%.3d', [(ts.Time mod 1000)]) +']:<' +
+   strSocketInfo + strMsgLenIndicator + msg;
+  if cbSave.Checked then
+  begin
+    // save the log to file.
+    str := str + #13#10;
+    FileWrite(logFileHandle, str[1], Length(str));
+  end
+  else
+      //if not save to file, then show log in memo.
+      MemoLog.Append(str);
 end;
 
 end.

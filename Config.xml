@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <MocaSimple>
-  <Application template_index="0" port="2222" log_type="0" hex="1" top="245" left="324" height="562" width="710" split="209"/>
+  <Application template_index="0" port="2222" log_type="0" hex="0" top="258" left="279" height="562" width="710" split="116"/>
   <Template>
     <Item name="HTTP_RESPONSE">HTTP/1.1 200 OK
 Content-Length:2
 
 OK
+</Item>
+    <Item name="test3test3">Put your response message to here.
 </Item>
   </Template>
   <Rule/>

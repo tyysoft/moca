@@ -59,6 +59,9 @@ object MainForm: TMainForm
       Height = 22
       Top = 2
       Width = 172
+      AutoComplete = True
+      AutoCompleteText = [cbactEnabled, cbactEndOfLineComplete, cbactSearchAscending]
+      AutoDropDown = True
       ItemHeight = 16
       OnCloseUp = cmbTemplateCloseUp
       Style = csOwnerDrawEditableVariable
@@ -161,6 +164,14 @@ object MainForm: TMainForm
       }
       OnClick = sbDeleteTemplateClick
     end
+    object cbUdp: TCheckBox
+      Left = 456
+      Height = 21
+      Top = 2
+      Width = 47
+      Caption = 'UDP'
+      TabOrder = 3
+    end
   end
   object Panel1: TPanel
     Left = 0
@@ -190,8 +201,8 @@ object MainForm: TMainForm
         TabOrder = 0
       end
       object cbLogLevel: TComboBox
-        Left = 1
-        Height = 25
+        Left = 61
+        Height = 23
         Top = 2
         Width = 100
         ItemHeight = 17
@@ -200,12 +211,12 @@ object MainForm: TMainForm
           'All'
           'Session'
         )
-        Style = csDropDownList
+        Style = csOwnerDrawFixed
         TabOrder = 1
         Text = 'All'
       end
       object cbHex: TCheckBox
-        Left = 109
+        Left = 169
         Height = 21
         Top = 2
         Width = 44
@@ -213,11 +224,30 @@ object MainForm: TMainForm
         TabOrder = 2
       end
       object ToolButton2: TToolButton
-        Left = 101
+        Left = 161
         Height = 22
         Top = 2
         Caption = 'ToolButton2'
         Style = tbsSeparator
+      end
+      object Label3: TLabel
+        Left = 1
+        Height = 22
+        Top = 2
+        Width = 60
+        AutoSize = False
+        Caption = 'Log Level:'
+        Layout = tlCenter
+        ParentColor = False
+      end
+      object cbSave: TCheckBox
+        Left = 213
+        Height = 21
+        Top = 2
+        Width = 49
+        Caption = 'Save'
+        OnChange = cbSaveChange
+        TabOrder = 3
       end
     end
     object MemoLog: TMemo
@@ -259,7 +289,7 @@ object MainForm: TMainForm
     Font.Pitch = fpFixed
     Font.Quality = fqDraft
     Lines.Strings = (
-      'This is a test String'
+      'Put your response message to here.'
     )
     ParentFont = False
     ScrollBars = ssAutoBoth
@@ -274,5 +304,12 @@ object MainForm: TMainForm
     ReuseAddress = True
     Left = 720
     Top = 208
+  end
+  object LUDP1: TLUDPComponent
+    Port = 0
+    OnReceive = LUDP1Receive
+    Timeout = 0
+    Left = 718
+    Top = 264
   end
 end
